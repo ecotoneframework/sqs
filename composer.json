@@ -33,15 +33,18 @@
         }
     },
     "require": {
-        "ecotone/enqueue": "~1.225.0",
+        "ecotone/enqueue": "~1.226.0",
         "enqueue/sqs": "^0.10.15",
         "aws/aws-sdk-php": "<=3.269.5"
     },
     "require-dev": {
-        "phpunit/phpunit": "^9.5",
+        "phpunit/phpunit": "^9.6",
         "behat/behat": "^3.10",
         "phpstan/phpstan": "^1.8",
-        "wikimedia/composer-merge-plugin": "^2.0"
+        "wikimedia/composer-merge-plugin": "^2.1"
+    },
+    "conflict": {
+        "guzzlehttp/promises": "<1.4.0"
     },
     "scripts": {
         "tests:phpstan": "vendor/bin/phpstan",
@@ -55,7 +58,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "1.225.0-dev"
+            "dev-main": "1.226.0-dev"
         },
         "ecotone": {
             "repository": "sqs"
