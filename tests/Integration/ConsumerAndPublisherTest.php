@@ -22,7 +22,7 @@ use Test\Ecotone\Sqs\Fixture\SqsConsumer\SqsConsumerExample;
  * licence Apache-2.0
  * @internal
  */
-final class ConsumerAndPublisherTestCase extends ConnectionTestCase
+final class ConsumerAndPublisherTest extends ConnectionTestCase
 {
     public function testing_sending_message_using_publisher_and_receiving_using_consumer()
     {

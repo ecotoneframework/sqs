@@ -28,7 +28,7 @@ use Test\Ecotone\Sqs\Fixture\SqsConsumer\SqsAsyncConsumerExample;
  * licence Apache-2.0
  * @internal
  */
-final class SqsBackedMessageChannelTestCase extends ConnectionTestCase
+final class SqsBackedMessageChannelTest extends ConnectionTestCase
 {
     public function test_sending_and_receiving_message()
     {
