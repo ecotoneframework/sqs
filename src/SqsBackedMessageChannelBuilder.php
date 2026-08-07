@@ -32,4 +32,21 @@ final class SqsBackedMessageChannelBuilder extends EnqueueMessageChannelBuilder
     {
         return new self($channelName, $connectionReferenceName);
     }
+
+    public function withHighThroughputPublishing(bool $enabled = true, ?int $timeoutInMilliseconds = null): self
+    {
+        $this->getSqsOutboundChannelAdapter()->withAsyncPublishing($enabled, $timeoutInMilliseconds);
+
+        return $this;
+    }
+
+    protected function supportsBatchMessages(): bool
+    {
+        return $this->getSqsOutboundChannelAdapter()->isAsyncPublishingEnabled();
+    }
+
+    private function getSqsOutboundChannelAdapter(): SqsOutboundChannelAdapterBuilder
+    {
+        return $this->outboundChannelAdapter;
+    }
 }
