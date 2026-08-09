@@ -9,7 +9,7 @@ use Ecotone\Lite\Test\FlowTestSupport;
 use Ecotone\Messaging\Attribute\Asynchronous;
 use Ecotone\Messaging\Attribute\Parameter\Reference;
 use Ecotone\Messaging\BatchMessage;
-use Ecotone\Messaging\Channel\AsyncPublishing\PublishingFailedException;
+use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Config\ModulePackageList;
 use Ecotone\Messaging\Config\ServiceConfiguration;
 use Ecotone\Messaging\Endpoint\ExecutionPollingMetadata;
@@ -26,15 +26,15 @@ use Ecotone\Test\LicenceTesting;
 use Enqueue\Sqs\SqsConnectionFactory;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Sqs\ConnectionTestCase;
-use Test\Ecotone\Sqs\Fixture\AsyncPublishing\OrderWasPlaced;
+use Test\Ecotone\Sqs\Fixture\HighThroughputPublishing\OrderWasPlaced;
 
 /**
  * licence Apache-2.0
  * @internal
  */
-final class AsyncPublishingTest extends ConnectionTestCase
+final class HighThroughputPublishingTest extends ConnectionTestCase
 {
-    public function test_multiple_messages_published_asynchronously_from_command_handler_are_delivered(): void
+    public function test_multiple_messages_published_from_command_handler_are_delivered(): void
     {
         $orderService = $this->createOrderService();
         $messaging = $this->bootstrapEcotoneWithChannel($orderService, LicenceTesting::VALID_LICENCE);
@@ -50,7 +50,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
         $this->assertSame(['espresso-1', 'espresso-2', 'espresso-3'], $receivedEvents);
     }
 
-    public function test_async_publishing_requires_enterprise_licence(): void
+    public function test_high_throughput_publishing_requires_enterprise_licence(): void
     {
         $orderService = $this->createOrderService();
 
@@ -59,7 +59,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
         $this->bootstrapEcotoneWithChannel($orderService, licenceKey: null);
     }
 
-    public function test_async_publishing_via_message_publisher_requires_enterprise_licence(): void
+    public function test_high_throughput_publishing_via_message_publisher_requires_enterprise_licence(): void
     {
         $this->expectException(LicensingException::class);
 
@@ -70,20 +70,20 @@ final class AsyncPublishingTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
                 ->withExtensionObjects([
                     SqsMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
-                        ->withAsyncPublishing(),
+                        ->withHighThroughputPublishing(),
                 ]),
         );
     }
 
-    public function test_async_publish_on_publisher_without_async_configuration_throws_before_publishing(): void
+    public function test_publish_deferred_on_publisher_without_non_blocking_confirmation_throws_before_publishing(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: false);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: false);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
         $publishFailed = false;
         try {
-            $publisher->asyncPublish('order that must not be published');
+            $publisher->publishDeferred('order that must not be published');
         } catch (PublishingFailedException) {
             $publishFailed = true;
         }
@@ -92,14 +92,14 @@ final class AsyncPublishingTest extends ConnectionTestCase
         $this->assertNull($messaging->getMessageChannel($queueName)->receive());
     }
 
-    public function test_message_publisher_async_publish_confirms_delivery_on_future_resolve(): void
+    public function test_publish_deferred_confirms_delivery_on_future_resolve(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $singleFuture = $publisher->asyncPublish('single order');
-        $batchFuture = $publisher->asyncPublish(
+        $singleFuture = $publisher->publishDeferred('single order');
+        $batchFuture = $publisher->publishDeferred(
             BatchMessage::constructEmpty()
                 ->append('first order')
                 ->append('second order', ['priority' => '5'])
@@ -137,7 +137,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::ASYNCHRONOUS_PACKAGE, ModulePackageList::SQS_PACKAGE]))
                 ->withExtensionObjects([
                     SqsMessagePublisherConfiguration::create(queueName: $queueName)
-                        ->withAsyncPublishing(timeoutInMilliseconds: 10000),
+                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
                     SqsBackedMessageChannelBuilder::create($queueName),
                 ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
@@ -156,7 +156,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_batch_larger_than_ten_messages_is_chunked_and_delivered(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
         $batch = BatchMessage::constructEmpty();
@@ -164,7 +164,7 @@ final class AsyncPublishingTest extends ConnectionTestCase
             $batch = $batch->append('order ' . $orderNumber);
         }
 
-        $this->assertNull($publisher->asyncPublish($batch)->resolve());
+        $this->assertNull($publisher->publishDeferred($batch)->resolve());
 
         $receivedPayloads = [];
         while ($message = $messaging->getMessageChannel($queueName)->receive()) {
@@ -176,11 +176,11 @@ final class AsyncPublishingTest extends ConnectionTestCase
     public function test_delayed_entry_of_published_batch_is_delivered_after_delay(): void
     {
         $queueName = Uuid::v7()->toRfc4122();
-        $messaging = $this->bootstrapPublisher($queueName, asyncPublishing: true);
+        $messaging = $this->bootstrapPublisher($queueName, highThroughputPublishing: true);
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
         $publishedAt = microtime(true);
-        $publisher->asyncPublish(
+        $publisher->publishDeferred(
             BatchMessage::constructEmpty()
                 ->append('immediate order')
                 ->append('delayed order', [MessageHeaders::DELIVERY_DELAY => 1000])
@@ -246,11 +246,11 @@ final class AsyncPublishingTest extends ConnectionTestCase
         );
     }
 
-    private function bootstrapPublisher(string $queueName, bool $asyncPublishing): FlowTestSupport
+    private function bootstrapPublisher(string $queueName, bool $highThroughputPublishing): FlowTestSupport
     {
         $publisherConfiguration = SqsMessagePublisherConfiguration::create(queueName: $queueName);
-        if ($asyncPublishing) {
-            $publisherConfiguration = $publisherConfiguration->withAsyncPublishing();
+        if ($highThroughputPublishing) {
+            $publisherConfiguration = $publisherConfiguration->withHighThroughputPublishing();
         }
 
         return EcotoneLite::bootstrapFlowTesting(

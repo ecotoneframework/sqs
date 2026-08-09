@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Test\Ecotone\Sqs\Fixture\AsyncPublishing;
+namespace Test\Ecotone\Sqs\Fixture\HighThroughputPublishing;
 
 /**
  * licence Apache-2.0

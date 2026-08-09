@@ -8,7 +8,7 @@ use Ecotone\Lite\EcotoneLite;
 use Ecotone\Lite\Test\FlowTestSupport;
 use Ecotone\Messaging\Attribute\Parameter\Reference;
 use Ecotone\Messaging\BatchMessage;
-use Ecotone\Messaging\Channel\AsyncPublishing\PublishingFailedException;
+use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Config\ModulePackageList;
 use Ecotone\Messaging\Config\ServiceConfiguration;
 use Ecotone\Messaging\MessagePublisher;
@@ -25,14 +25,14 @@ use Test\Ecotone\Sqs\ConnectionTestCase;
  * licence Apache-2.0
  * @internal
  */
-final class AsyncPublishingReliabilityTest extends ConnectionTestCase
+final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
 {
     public function test_broker_rejected_batch_fails_async_publish_on_future_resolve(): void
     {
         $messaging = $this->bootstrapPublisher(Uuid::v7()->toRfc4122());
         $publisher = $messaging->getGateway(MessagePublisher::class);
 
-        $future = $publisher->asyncPublish(
+        $future = $publisher->publishDeferred(
             BatchMessage::constructEmpty()
                 ->append('valid order')
                 ->append(str_repeat('x', 300_000))
@@ -63,9 +63,9 @@ final class AsyncPublishingReliabilityTest extends ConnectionTestCase
             #[CommandHandler('order.placeAllBatches')]
             public function handle(string $order, #[Reference(MessagePublisher::class)] MessagePublisher $publisher): void
             {
-                $publisher->asyncPublish(BatchMessage::constructEmpty()->append($order . ' first valid order'));
-                $publisher->asyncPublish(BatchMessage::constructEmpty()->append(str_repeat('x', 300_000)));
-                $publisher->asyncPublish(BatchMessage::constructEmpty()->append($order . ' third valid order'));
+                $publisher->publishDeferred(BatchMessage::constructEmpty()->append($order . ' first valid order'));
+                $publisher->publishDeferred(BatchMessage::constructEmpty()->append(str_repeat('x', 300_000)));
+                $publisher->publishDeferred(BatchMessage::constructEmpty()->append($order . ' third valid order'));
             }
         };
         $messaging = EcotoneLite::bootstrapFlowTesting(
@@ -75,7 +75,7 @@ final class AsyncPublishingReliabilityTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
                 ->withExtensionObjects([
                     SqsMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
-                        ->withAsyncPublishing(timeoutInMilliseconds: 10000),
+                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
                 ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
@@ -94,7 +94,7 @@ final class AsyncPublishingReliabilityTest extends ConnectionTestCase
                 ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
                 ->withExtensionObjects([
                     SqsMessagePublisherConfiguration::create(queueName: $queueName)
-                        ->withAsyncPublishing(timeoutInMilliseconds: 10000),
+                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
                 ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
