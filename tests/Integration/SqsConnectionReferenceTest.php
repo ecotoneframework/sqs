@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Test\Ecotone\Sqs\Integration;
 
 use Ecotone\Api\ExtensionObject\ModulePackageList;
-use Ecotone\Api\ExtensionObject\ServiceConfiguration;
 use Ecotone\Api\Lite\EcotoneLite;
 use Ecotone\Api\Sqs\SqsBackedMessageChannelBuilder;
 use Ecotone\Api\Sqs\SqsConnectionReference;
-use Ecotone\Messaging\Support\MessageBuilder;
 use Ecotone\Sqs\Connection\SqsConnectionFactory;
+use Ecotone\Test\ChannelTestSupport;
+use Ecotone\Test\StaticMessageBuilder;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Sqs\ConnectionTestCase;
 
@@ -32,15 +32,12 @@ final class SqsConnectionReferenceTest extends ConnectionTestCase
             [
                 SqsConnectionReference::DEFAULT => $connection_factory,
             ],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::SQS_PACKAGE])
-                ->withExtensionObjects([
-                    SqsBackedMessageChannelBuilder::create($queue_name),
-                ])
+            extensionObjects: [SqsBackedMessageChannelBuilder::create($queue_name)],
+            enabledModules: [ModulePackageList::SQS_PACKAGE],
         );
 
-        $ecotone->getMessageChannel($queue_name)->send(MessageBuilder::withPayload('milk')->build());
+        ChannelTestSupport::of($ecotone)->getMessageChannel($queue_name)->send(StaticMessageBuilder::withPayload('milk')->build());
 
-        self::assertSame('milk', $ecotone->getMessageChannel($queue_name)->receive()->getPayload());
+        self::assertSame('milk', ChannelTestSupport::of($ecotone)->getMessageChannel($queue_name)->receive()->getPayload());
     }
 }

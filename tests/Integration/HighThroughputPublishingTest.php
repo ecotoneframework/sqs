@@ -12,7 +12,6 @@ use Ecotone\Api\Attribute\Reference;
 use Ecotone\Api\ExtensionObject\ExecutionPollingMetadata;
 use Ecotone\Api\ExtensionObject\ModulePackageList;
 use Ecotone\Api\ExtensionObject\PollingMetadata;
-use Ecotone\Api\ExtensionObject\ServiceConfiguration;
 use Ecotone\Api\Gateway\EventBus;
 use Ecotone\Api\Gateway\MessagePublisher;
 use Ecotone\Api\Lite\EcotoneLite;
@@ -26,6 +25,7 @@ use Ecotone\Api\Sqs\SqsMessagePublisherConfiguration;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Support\LicensingException;
 use Ecotone\Sqs\Connection\SqsConnectionFactory;
+use Ecotone\Test\ChannelTestSupport;
 use Ecotone\Test\LicenceTesting;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Sqs\ConnectionTestCase;
@@ -69,12 +69,8 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         EcotoneLite::bootstrapFlowTesting(
             [],
             [SqsConnectionFactory::class => $this->getConnectionFactory()],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::SQS_PACKAGE])
-                ->withExtensionObjects([
-                    SqsMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
-                        ->withHighThroughputPublishing(),
-                ]),
+            extensionObjects: [SqsMessagePublisherConfiguration::create(queueName:Uuid::v7()->toRfc4122())->withHighThroughputPublishing()],
+            enabledModules: [ModulePackageList::SQS_PACKAGE],
         );
     }
 
@@ -92,7 +88,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         }
 
         $this->assertTrue($publishFailed);
-        $this->assertNull($this->receiveWithinOneSecond($messaging->getMessageChannel($queueName)));
+        $this->assertNull($this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName)));
     }
 
     public function test_publish_deferred_confirms_delivery_on_future_resolve(): void
@@ -112,7 +108,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         $this->assertNull($batchFuture->resolve());
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         sort($receivedPayloads);
@@ -136,20 +132,18 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         $messaging = EcotoneLite::bootstrapFlowTesting(
             [$commandHandler::class],
             [SqsConnectionFactory::class => $this->getConnectionFactory(), $commandHandler],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::SQS_PACKAGE])
-                ->withExtensionObjects([
-                    SqsMessagePublisherConfiguration::create(queueName: $queueName)
-                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
-                    SqsBackedMessageChannelBuilder::create($queueName),
-                ]),
+            extensionObjects: [
+                SqsMessagePublisherConfiguration::create(queueName:$queueName)->withHighThroughputPublishing(confirmationTimeoutInMilliseconds:10000),
+                SqsBackedMessageChannelBuilder::create($queueName),
+            ],
+            enabledModules: [ModulePackageList::SQS_PACKAGE],
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
 
         $messaging->sendCommandWithRouting('order.placeBatch', 'espresso');
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         sort($receivedPayloads);
@@ -170,7 +164,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         $this->assertNull($publisher->publishDeferred($batch)->resolve());
 
         $receivedPayloads = [];
-        while ($message = $this->receiveWithinOneSecond($messaging->getMessageChannel($queueName))) {
+        while ($message = $this->receiveWithinOneSecond(ChannelTestSupport::of($messaging)->getMessageChannel($queueName))) {
             $receivedPayloads[] = $message->getPayload();
         }
         $this->assertCount(25, $receivedPayloads);
@@ -189,7 +183,7 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
                 ->append('delayed order', [MessageHeaders::DELIVERY_DELAY => 1000])
         )->resolve();
 
-        $channel = $messaging->getMessageChannel($queueName);
+        $channel = ChannelTestSupport::of($messaging)->getMessageChannel($queueName);
         $receivedAt = [];
         $deadline = microtime(true) + 15;
         while (count($receivedAt) < 2 && microtime(true) < $deadline) {
@@ -239,12 +233,8 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [$orderService::class],
             [SqsConnectionFactory::class => $this->getConnectionFactory(), $orderService],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::SQS_PACKAGE])
-                ->withExtensionObjects([
-                    SqsBackedMessageChannelBuilder::create('asyncOrdersChannel')
-                        ->withHighThroughputPublishing(),
-                ]),
+            extensionObjects: [SqsBackedMessageChannelBuilder::create('asyncOrdersChannel')->withHighThroughputPublishing()],
+            enabledModules: [ModulePackageList::SQS_PACKAGE],
             licenceKey: $licenceKey,
         );
     }
@@ -259,12 +249,11 @@ final class HighThroughputPublishingTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [SqsConnectionFactory::class => $this->getConnectionFactory()],
-            ServiceConfiguration::createWithDefaults()
-                ->withEnabledModulePackageNames([ModulePackageList::SQS_PACKAGE])
-                ->withExtensionObjects([
-                    $publisherConfiguration,
-                    SqsBackedMessageChannelBuilder::create($queueName),
-                ]),
+            extensionObjects: [
+                $publisherConfiguration,
+                SqsBackedMessageChannelBuilder::create($queueName),
+            ],
+            enabledModules: [ModulePackageList::SQS_PACKAGE],
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }

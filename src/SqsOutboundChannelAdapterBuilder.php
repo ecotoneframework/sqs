@@ -16,6 +16,7 @@ use Ecotone\Messaging\Config\Container\Reference;
 use Ecotone\Messaging\Conversion\ConversionService;
 use Ecotone\Messaging\Support\Assert;
 use Ecotone\Messaging\Support\LicensingException;
+use Ecotone\Messaging\Support\MessageBuilder;
 
 /**
  * licence Apache-2.0
@@ -62,7 +63,7 @@ final class SqsOutboundChannelAdapterBuilder extends EnqueueOutboundChannelAdapt
 
     public function compile(MessagingContainerBuilder $builder): Definition
     {
-        if (($this->batchPublishing || $this->nonBlockingConfirmation) && ! $builder->getServiceConfiguration()->isRunningForEnterprise()) {
+        if (($this->batchPublishing || $this->nonBlockingConfirmation) && ! $builder->getBootstrapConfiguration()->isRunningForEnterprise()) {
             throw LicensingException::create('High Throughput Publishing is available only with Ecotone Enterprise licence. See https://docs.ecotone.tech/enterprise for details.');
         }
 
@@ -74,6 +75,7 @@ final class SqsOutboundChannelAdapterBuilder extends EnqueueOutboundChannelAdapt
 
         $outboundMessageConverter = new Definition(OutboundMessageConverter::class, [
             $this->headerMapper,
+            new Reference(MessageBuilder::class),
             $this->defaultConversionMediaType,
             $this->defaultDeliveryDelay,
             $this->defaultTimeToLive,
@@ -87,6 +89,7 @@ final class SqsOutboundChannelAdapterBuilder extends EnqueueOutboundChannelAdapt
             $this->autoDeclare,
             $outboundMessageConverter,
             new Reference(ConversionService::REFERENCE_NAME),
+            new Reference(MessageBuilder::class),
             new Reference(PendingDeliveryRegistry::class),
             $this->batchPublishing,
             $this->nonBlockingConfirmation,
