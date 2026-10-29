@@ -4,19 +4,16 @@ declare(strict_types=1);
 
 namespace Ecotone\Sqs;
 
-use Aws\Exception\AwsException;
-use Ecotone\Api\Messaging\BatchMessage;
-use Ecotone\Api\Messaging\DestinationDoesNotExistException;
-use Ecotone\Api\Messaging\Message;
-use Ecotone\Api\Messaging\MessageHeaders;
 use Ecotone\Enqueue\CachedConnectionFactory;
 use Ecotone\Enqueue\EnqueueOutboundChannelAdapter;
+use Ecotone\Messaging\BatchMessage;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PendingDeliveryRegistry;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
 use Ecotone\Messaging\Channel\PollableChannel\Serialization\OutboundMessageConverter;
 use Ecotone\Messaging\Config\ConfigurationException;
 use Ecotone\Messaging\Conversion\ConversionService;
-use Ecotone\Messaging\Support\MessageBuilder;
+use Ecotone\Messaging\Message;
+use Ecotone\Messaging\MessageHeaders;
 use Enqueue\Sqs\SqsContext;
 use Enqueue\Sqs\SqsDestination;
 use Interop\Queue\Exception\InvalidMessageException;
@@ -26,7 +23,6 @@ use Interop\Queue\Exception\InvalidMessageException;
  */
 final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
 {
-    private const MISSING_QUEUE_ERROR_CODES = ['AWS.SimpleQueueService.NonExistentQueue', 'QueueDoesNotExist'];
     private const MAX_ENTRIES_PER_BATCH_REQUEST = 10;
     private const BATCH_REQUEST_PAYLOAD_BUDGET_IN_BYTES = 204800;
 
@@ -38,13 +34,10 @@ final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
         bool $autoDeclare,
         OutboundMessageConverter $outboundMessageConverter,
         ConversionService $conversionService,
-        MessageBuilder $messageBuilder,
         private PendingDeliveryRegistry $pendingDeliveryRegistry,
         private bool $batchPublishing = false,
         private bool $nonBlockingConfirmation = false,
-        private int $confirmationTimeoutInMilliseconds = SqsOutboundChannelAdapterBuilder::DEFAULT_CONFIRMATION_TIMEOUT,
-        private bool $requireExistingDestination = false,
-        private string $connectionReferenceName = '',
+        private int $confirmationTimeout = SqsOutboundChannelAdapterBuilder::DEFAULT_CONFIRMATION_TIMEOUT,
     ) {
         $this->requestDispatchPool = new SqsRequestDispatchPool();
         parent::__construct(
@@ -53,7 +46,6 @@ final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
             $autoDeclare,
             $outboundMessageConverter,
             $conversionService,
-            $messageBuilder,
             $batchPublishing,
             $queueName,
         );
@@ -73,14 +65,12 @@ final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
             throw ConfigurationException::create(sprintf('Sending BatchMessage over `%s` requires batch publishing to be enabled. Enable it with withHighThroughputPublishing(), available as part of Ecotone Enterprise.', $this->queueName));
         }
 
-        $this->verifyDestinationExists();
-
         /** @var SqsContext $context */
         $context = $this->createOutboundContext();
 
         $payload = $message->getPayload();
         $messagesToPublish = $payload instanceof BatchMessage
-            ? array_map(fn (array $entry): Message => $this->convertBatchEntryToMessage($entry), $payload->entries)
+            ? array_map(fn (array $entry): Message => $this->convertBatchEntryToMessage($entry), $payload->getEntries())
             : [$message];
 
         if ($messagesToPublish === []) {
@@ -107,32 +97,6 @@ final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
         $deliveryResult = $pendingDelivery->awaitDelivery();
         if (! $deliveryResult->isSuccessful()) {
             throw PublishingFailedException::withFailedDeliveries($deliveryResult->getFailedDeliveries());
-        }
-    }
-
-    private function verifyDestinationExists(): void
-    {
-        if (! $this->requireExistingDestination) {
-            return;
-        }
-
-        /** @var SqsContext $context */
-        $context = $this->connectionFactory->createContext();
-
-        try {
-            $context->getAwsSqsClient()->getQueueUrl(['QueueName' => $this->queueName]);
-        } catch (AwsException $exception) {
-            if (! in_array($exception->getAwsErrorCode(), self::MISSING_QUEUE_ERROR_CODES, true)) {
-                throw $exception;
-            }
-
-            throw DestinationDoesNotExistException::forChannel(
-                $this->queueName,
-                'queue',
-                $this->queueName,
-                sprintf("SQS connection '%s'", $this->connectionReferenceName),
-                sprintf("SqsBackedMessageChannelBuilder::create('%s')", $this->queueName),
-            );
         }
     }
 
@@ -217,13 +181,8 @@ final class SqsOutboundChannelAdapter extends EnqueueOutboundChannelAdapter
             'Entries' => $entries,
         ];
 
-        $arguments['@http'] = ['timeout' => $this->confirmationTimeoutInMilliseconds / 1000];
+        $arguments['@http'] = ['timeout' => $this->confirmationTimeout / 1000];
 
         return ['arguments' => $arguments, 'trackedMessages' => $trackedMessages];
-    }
-
-    public function __toString(): string
-    {
-        return "sqs outbound: {$this->queueName}";
     }
 }

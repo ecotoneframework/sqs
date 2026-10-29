@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Test\Ecotone\Sqs\Integration;
 
-use Ecotone\Api\ExtensionObject\ExecutionPollingMetadata;
-use Ecotone\Api\ExtensionObject\ModulePackageList;
-use Ecotone\Api\Lite\EcotoneLite;
-use Ecotone\Api\Sqs\SqsConnectionFactory;
-use Ecotone\Api\Sqs\SqsMessagePublisherConfiguration;
+use Ecotone\Lite\EcotoneLite;
+use Ecotone\Messaging\Config\ModulePackageList;
+use Ecotone\Messaging\Config\ServiceConfiguration;
+use Ecotone\Messaging\Endpoint\ExecutionPollingMetadata;
 use Ecotone\Sqs\Configuration\SqsMessageConsumerConfiguration;
+use Ecotone\Sqs\Configuration\SqsMessagePublisherConfiguration;
+use Enqueue\Sqs\SqsConnectionFactory;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Sqs\ConnectionTestCase;
 use Test\Ecotone\Sqs\Fixture\SqsConsumer\SqsConsumerExample;
@@ -27,17 +28,18 @@ final class ConsumerAndPublisherTest extends ConnectionTestCase
     {
         $endpointId = 'sqs_consumer';
         $queueName = Uuid::v7()->toRfc4122();
-        $ecotoneLite = EcotoneLite::bootstrapFlowTesting(
+        $ecotoneLite = EcotoneLite::bootstrapForTesting(
             [SqsConsumerExample::class],
             [
                 new SqsConsumerExample(),
                 SqsConnectionFactory::class => $this->getConnectionFactory(),
             ],
-            extensionObjects: [
-                SqsMessageConsumerConfiguration::create($endpointId, $queueName),
-                SqsMessagePublisherConfiguration::create(queueName:$queueName),
-            ],
-            enabledModules: [ModulePackageList::SQS_PACKAGE],
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
+                ->withExtensionObjects([
+                    SqsMessageConsumerConfiguration::create($endpointId, $queueName),
+                    SqsMessagePublisherConfiguration::create(queueName: $queueName),
+                ])
         );
 
         $payload = 'random_payload';

@@ -2,9 +2,9 @@
 
 namespace Test\Ecotone\Sqs;
 
-use Ecotone\Api\Sqs\SqsConnectionFactory;
-use Ecotone\Enqueue\ConnectionFactory;
+use Enqueue\Sqs\SqsConnectionFactory;
 use Exception;
+use Interop\Queue\ConnectionFactory;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -40,7 +40,7 @@ abstract class ConnectionTestCase extends TestCase
     {
         $context = ConnectionTestCase::getConnection()->createContext();
 
-        foreach (['async', 'sqs', 'order_service'] as $queue) {
+        foreach (['async', 'sqs'] as $queue) {
             try {
                 $context->deleteQueue($context->createQueue($queue));
             } catch (Exception $e) {

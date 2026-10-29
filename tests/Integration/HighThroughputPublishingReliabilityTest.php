@@ -4,20 +4,20 @@ declare(strict_types=1);
 
 namespace Test\Ecotone\Sqs\Integration;
 
-use Ecotone\Api\Attribute\CommandHandler;
-use Ecotone\Api\Attribute\Reference;
-use Ecotone\Api\ExtensionObject\ModulePackageList;
-use Ecotone\Api\Gateway\MessagePublisher;
-use Ecotone\Api\Lite\EcotoneLite;
-use Ecotone\Api\Lite\Test\FlowTestSupport;
-use Ecotone\Api\Messaging\BatchMessage;
-use Ecotone\Api\Sqs\SqsBackedMessageChannelBuilder;
-use Ecotone\Api\Sqs\SqsConnectionFactory;
-use Ecotone\Api\Sqs\SqsMessagePublisherConfiguration;
+use Ecotone\Lite\EcotoneLite;
+use Ecotone\Lite\Test\FlowTestSupport;
+use Ecotone\Messaging\Attribute\Parameter\Reference;
+use Ecotone\Messaging\BatchMessage;
 use Ecotone\Messaging\Channel\DeliveryConfirmation\PublishingFailedException;
-use Ecotone\Test\ChannelTestSupport;
+use Ecotone\Messaging\Config\ModulePackageList;
+use Ecotone\Messaging\Config\ServiceConfiguration;
+use Ecotone\Messaging\MessagePublisher;
+use Ecotone\Messaging\Support\MessageBuilder;
+use Ecotone\Modelling\Attribute\CommandHandler;
+use Ecotone\Sqs\Configuration\SqsMessagePublisherConfiguration;
+use Ecotone\Sqs\SqsBackedMessageChannelBuilder;
 use Ecotone\Test\LicenceTesting;
-use Ecotone\Test\StaticMessageBuilder;
+use Enqueue\Sqs\SqsConnectionFactory;
 use Symfony\Component\Uid\Uuid;
 use Test\Ecotone\Sqs\ConnectionTestCase;
 
@@ -50,8 +50,8 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
 
         $this->expectException(PublishingFailedException::class);
 
-        ChannelTestSupport::of($messaging)->getMessageChannel($queueName)->send(
-            StaticMessageBuilder::withPayload(
+        $messaging->getMessageChannel($queueName)->send(
+            MessageBuilder::withPayload(
                 BatchMessage::constructEmpty()->append(str_repeat('x', 300_000))
             )->build()
         );
@@ -71,14 +71,18 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
         $messaging = EcotoneLite::bootstrapFlowTesting(
             [$commandHandler::class],
             [SqsConnectionFactory::class => $this->getConnectionFactory(), $commandHandler],
-            extensionObjects: [SqsMessagePublisherConfiguration::create(queueName:Uuid::v7()->toRfc4122())->withHighThroughputPublishing(confirmationTimeoutInMilliseconds:10000)],
-            enabledModules: [ModulePackageList::SQS_PACKAGE],
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
+                ->withExtensionObjects([
+                    SqsMessagePublisherConfiguration::create(queueName: Uuid::v7()->toRfc4122())
+                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
+                ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
 
         $this->expectException(PublishingFailedException::class);
 
-        $messaging->sendCommandWithRouting('order.placeAllBatches', 'espresso');
+        $messaging->sendCommandWithRoutingKey('order.placeAllBatches', 'espresso');
     }
 
     private function bootstrapPublisher(string $queueName): FlowTestSupport
@@ -86,8 +90,12 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [SqsConnectionFactory::class => $this->getConnectionFactory()],
-            extensionObjects: [SqsMessagePublisherConfiguration::create(queueName:$queueName)->withHighThroughputPublishing(confirmationTimeoutInMilliseconds:10000)],
-            enabledModules: [ModulePackageList::SQS_PACKAGE],
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::SQS_PACKAGE]))
+                ->withExtensionObjects([
+                    SqsMessagePublisherConfiguration::create(queueName: $queueName)
+                        ->withHighThroughputPublishing(confirmationTimeoutInMilliseconds: 10000),
+                ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }
@@ -97,8 +105,12 @@ final class HighThroughputPublishingReliabilityTest extends ConnectionTestCase
         return EcotoneLite::bootstrapFlowTesting(
             [],
             [SqsConnectionFactory::class => $this->getConnectionFactory()],
-            extensionObjects: [SqsBackedMessageChannelBuilder::create($channelName)->withHighThroughputPublishing()],
-            enabledModules: [ModulePackageList::SQS_PACKAGE],
+            ServiceConfiguration::createWithDefaults()
+                ->withSkippedModulePackageNames(ModulePackageList::allPackagesExcept([ModulePackageList::ASYNCHRONOUS_PACKAGE, ModulePackageList::SQS_PACKAGE]))
+                ->withExtensionObjects([
+                    SqsBackedMessageChannelBuilder::create($channelName)
+                        ->withHighThroughputPublishing(),
+                ]),
             licenceKey: LicenceTesting::VALID_LICENCE,
         );
     }

@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Ecotone\Sqs\Configuration;
 
 use Ecotone\AnnotationFinder\AnnotationFinder;
-use Ecotone\Api\Attribute\ModuleAnnotation;
-use Ecotone\Api\ExtensionObject\ModulePackageList;
+use Ecotone\Messaging\Attribute\ModuleAnnotation;
 use Ecotone\Messaging\Config\Annotation\AnnotationModule;
 use Ecotone\Messaging\Config\Annotation\ModuleConfiguration\NoExternalConfigurationModule;
 use Ecotone\Messaging\Config\Configuration;
+use Ecotone\Messaging\Config\ModulePackageList;
 use Ecotone\Messaging\Config\ModuleReferenceSearchService;
 use Ecotone\Messaging\Handler\InterfaceToCallRegistry;
+use Ecotone\Sqs\SqsBackedMessageChannelBuilder;
 
 #[ModuleAnnotation]
 /**
@@ -30,6 +31,11 @@ final class SqsModule extends NoExternalConfigurationModule implements Annotatio
     {
         // This module now only handles basic SQS channel builder registration
         // Channel manager registration is handled by SqsChannelManagerModule
+    }
+
+    public function canHandle($extensionObject): bool
+    {
+        return $extensionObject instanceof SqsBackedMessageChannelBuilder;
     }
 
     public function getModulePackageName(): string

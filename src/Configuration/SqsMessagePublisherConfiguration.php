@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Ecotone\Api\Sqs;
+namespace Ecotone\Sqs\Configuration;
 
-use Ecotone\Api\Gateway\MessagePublisher;
+use Ecotone\Messaging\MessagePublisher;
 use Ecotone\Messaging\Support\Assert;
+use Enqueue\Sqs\SqsConnectionFactory;
 
 /**
  * licence Apache-2.0
@@ -16,13 +17,13 @@ final class SqsMessagePublisherConfiguration
     private string $headerMapper = '';
     private bool $batchPublishing = false;
     private bool $nonBlockingConfirmation = false;
-    private ?int $confirmationTimeoutInMilliseconds = null;
+    private ?int $confirmationTimeout = null;
 
     private function __construct(private string $connectionReference, private string $queueName, private ?string $outputDefaultConversionMediaType, private string $referenceName)
     {
     }
 
-    public static function create(string $publisherReferenceName = MessagePublisher::class, string $queueName = '', ?string $outputDefaultConversionMediaType = null, string $connectionReference = SqsConnectionReference::DEFAULT): self
+    public static function create(string $publisherReferenceName = MessagePublisher::class, string $queueName = '', ?string $outputDefaultConversionMediaType = null, string $connectionReference = SqsConnectionFactory::class): self
     {
         return new self($connectionReference, $queueName, $outputDefaultConversionMediaType, $publisherReferenceName);
     }
@@ -76,7 +77,9 @@ final class SqsMessagePublisherConfiguration
     }
 
     /**
-     * @link https://docs.ecotone.tech/modelling/microservices-php/message-publisher#high-throughput-publishing-enterprise
+     * @param bool $batchPublishing coalesces published Messages into SQS batch send requests
+     * @param bool $nonBlockingConfirmation dispatches send requests without waiting on their responses, which are awaited on Future::resolve() or before the surrounding Command Bus or asynchronous endpoint finishes
+     * @param int|null $confirmationTimeoutInMilliseconds how long to await a send response before treating the delivery as failed
      */
     public function withHighThroughputPublishing(bool $batchPublishing = true, bool $nonBlockingConfirmation = true, ?int $confirmationTimeoutInMilliseconds = null): self
     {
@@ -84,7 +87,7 @@ final class SqsMessagePublisherConfiguration
         $this->batchPublishing = $batchPublishing;
         $this->nonBlockingConfirmation = $nonBlockingConfirmation;
         if ($confirmationTimeoutInMilliseconds !== null) {
-            $this->confirmationTimeoutInMilliseconds = $confirmationTimeoutInMilliseconds;
+            $this->confirmationTimeout = $confirmationTimeoutInMilliseconds;
         }
 
         return $this;
@@ -102,6 +105,6 @@ final class SqsMessagePublisherConfiguration
 
     public function getConfirmationTimeout(): ?int
     {
-        return $this->confirmationTimeoutInMilliseconds;
+        return $this->confirmationTimeout;
     }
 }
